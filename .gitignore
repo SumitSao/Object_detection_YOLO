@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Output files
+output/
+*.jpg
+*.png
+*.mp4
+*.avi
+
+# Model weights (optional - uncomment if you want to track the model)
+# yolo11n.pt
+
+# OS
+.DS_Store
+Thumbs.db
+$Recycle.Bin/
+pagefile.sys
+
+# Jupyter Notebook
+.ipynb_checkpoints
