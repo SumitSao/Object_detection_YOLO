@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 7
+names: ['bike', 'bus', 'car', 'cycle', 'man', 'rickshaw', 'traffic light']
+
+roboflow:
+  workspace: aiml-je6yc
+  project: object-detection-c8wwt
+  version: 6
+  license: Public Domain
+  url: https://universe.roboflow.com/aiml-je6yc/object-detection-c8wwt/dataset/6

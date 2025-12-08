@@ -25,6 +25,12 @@ output/
 *.mp4
 *.avi
 
+# Training runs
+runs/
+
+# Advanced training script (optional)
+train_model.py
+
 # Model weights (optional - uncomment if you want to track the model)
 # yolo11n.pt
 

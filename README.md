@@ -1,3 +1,4 @@
+
 # YOLO Object Detection System
 
 A complete object detection system using YOLO11n for processing images and video clips with visualization and output saving capabilities.
@@ -23,18 +24,88 @@ A complete object detection system using YOLO11n for processing images and video
 ## Project Structure
 
 ```
-Object_detectin_YOLO/
+Object_detection_YOLO/
 ├── detect_image.py       # Image detection script
 ├── detect_video.py       # Video detection script
+├── train_model.py        # Advanced model training script
+├── train_quick.py        # Quick-start training script
 ├── requirements.txt      # Python dependencies
 ├── README.md            # This file
+├── data/                # Training dataset
+│   ├── data.yaml        # Dataset configuration
+│   ├── train/           # Training images & labels
+│   ├── valid/           # Validation images & labels
+│   └── test/            # Test images & labels
 ├── input/               # Place your images/videos here
 └── output/              # Detected results will be saved here
 ```
 
 ## Usage
 
-### Image Detection
+### Model Training (Custom Dataset)
+
+Train YOLO on your custom traffic detection dataset with 7 classes: bike, bus, car, cycle, man, rickshaw, traffic light.
+
+**Quick Start Training** (Recommended for beginners):
+```bash
+python train_quick.py
+```
+- Trains for 50 epochs
+- Auto-detects GPU/CPU
+- Results saved to `runs/train/quick_train/`
+
+**Advanced Training** (Full control):
+```bash
+python train_model.py
+```
+- 100 epochs with early stopping
+- Configurable hyperparameters
+- Data augmentation
+- Checkpoint saving
+
+**After Training**: Use your trained model by updating the model path in detection scripts:
+```python
+model = YOLO('runs/train/quick_train/weights/best.pt')
+```
+
+For detailed training guide, see the training documentation.
+
+
+### Unified Inference (Recommended)
+
+The `inference.py` script provides a unified interface for all detection tasks with advanced features.
+
+**Single Image**:
+```bash
+python inference.py --source input/image.jpg --show
+```
+
+**Video**:
+```bash
+python inference.py --source input/video.mp4 --show
+```
+
+**Real-time Webcam** (press 'q' to quit, 's' for screenshot):
+```bash
+python inference.py --source 0 --show
+```
+
+**Batch Directory**:
+```bash
+python inference.py --source input/ --output results/
+```
+
+**With Custom Trained Model**:
+```bash
+python inference.py --source input/image.jpg --model runs/train/quick_train/weights/best.pt --show
+```
+
+**Advanced Options**:
+```bash
+python inference.py --source input/video.mp4 --conf 0.5 --iou 0.45 --show
+```
+
+### Image Detection (Legacy)
 
 **Process a single image**:
 ```bash
@@ -173,4 +244,3 @@ python detect_video.py --source input/my_video.mp4 --show
 ## License
 
 This project uses the Ultralytics YOLO implementation, which is licensed under AGPL-3.0.
-# Object_detection_YOLO
