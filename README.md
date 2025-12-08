@@ -173,3 +173,4 @@ python detect_video.py --source input/my_video.mp4 --show
 ## License
 
 This project uses the Ultralytics YOLO implementation, which is licensed under AGPL-3.0.
+# Object_detection_YOLO
