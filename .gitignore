@@ -5,6 +5,9 @@ __pycache__/
 *.so
 .Python
 
+# Authentication
+auth/users.db
+
 # Virtual Environment
 .venv/
 venv/
