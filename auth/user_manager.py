@@ -1,6 +1,10 @@
 """
 User Manager Module
 Handles user authentication, registration, and database operations using SQLite.
+
+SOLID Principles Applied:
+- Single Responsibility Principle (SRP): Separate classes for password hashing and validation
+- Dependency Inversion Principle (DIP): UserManager depends on abstractions
 """
 
 import sqlite3
@@ -10,8 +14,79 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 
+# ============================================================================
+# SINGLE RESPONSIBILITY PRINCIPLE (SRP) - Password Hasher
+# ============================================================================
+
+class PasswordHasher:
+    """
+    Handles password hashing and verification (SRP)
+    Single Responsibility: Cryptographic operations for passwords
+    """
+    
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hash a password using bcrypt"""
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+    
+    @staticmethod
+    def verify_password(password: str, password_hash: str) -> bool:
+        """Verify a password against its hash"""
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+        except Exception:
+            return False
+
+
+# ============================================================================
+# SINGLE RESPONSIBILITY PRINCIPLE (SRP) - User Validator
+# ============================================================================
+
+class UserValidator:
+    """
+    Validates user input (SRP)
+    Single Responsibility: Input validation for user data
+    """
+    
+    @staticmethod
+    def validate_registration(username: str, email: str, password: str) -> Tuple[bool, str]:
+        """Validate user registration input"""
+        if not username or not email or not password:
+            return False, "All fields are required"
+        
+        if len(username) < 3:
+            return False, "Username must be at least 3 characters long"
+        
+        if '@' not in email or '.' not in email:
+            return False, "Invalid email format"
+        
+        if len(password) < 6:
+            return False, "Password must be at least 6 characters long"
+        
+        return True, ""
+    
+    @staticmethod
+    def validate_login(username: str, password: str) -> Tuple[bool, str]:
+        """Validate login input"""
+        if not username or not password:
+            return False, "Username and password are required"
+        
+        return True, ""
+
+
+
+
+# ============================================================================
+# User Manager (Using SOLID Principles)
+# ============================================================================
+
 class UserManager:
-    """Manages user authentication and database operations."""
+    """
+    Manages user authentication and database operations (Refactored with SRP)
+    Now uses PasswordHasher and UserValidator for specific responsibilities
+    """
     
     def __init__(self, db_path: str = None):
         """
@@ -26,6 +101,9 @@ class UserManager:
             db_path = os.path.join(current_dir, 'users.db')
         
         self.db_path = db_path
+        # Use helper classes (SRP)
+        self.password_hasher = PasswordHasher()
+        self.validator = UserValidator()
         self._init_database()
     
     def _init_database(self):
@@ -46,32 +124,14 @@ class UserManager:
         conn.commit()
         conn.close()
     
+    # Password hashing methods now delegate to PasswordHasher (SRP)
     def _hash_password(self, password: str) -> str:
-        """
-        Hash a password using bcrypt.
-        
-        Args:
-            password: Plain text password
-            
-        Returns:
-            Hashed password as string
-        """
-        salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-        return hashed.decode('utf-8')
+        """Hash a password using PasswordHasher"""
+        return self.password_hasher.hash_password(password)
     
     def _verify_password(self, password: str, password_hash: str) -> bool:
-        """
-        Verify a password against its hash.
-        
-        Args:
-            password: Plain text password to verify
-            password_hash: Stored password hash
-            
-        Returns:
-            True if password matches, False otherwise
-        """
-        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+        """Verify a password using PasswordHasher"""
+        return self.password_hasher.verify_password(password, password_hash)
     
     def create_user(self, username: str, email: str, password: str) -> Tuple[bool, str]:
         """
@@ -85,12 +145,10 @@ class UserManager:
         Returns:
             Tuple of (success: bool, message: str)
         """
-        # Validate input
-        if not username or not email or not password:
-            return False, "All fields are required"
-        
-        if len(password) < 6:
-            return False, "Password must be at least 6 characters long"
+        # Use UserValidator (SRP)
+        is_valid, error_message = self.validator.validate_registration(username, email, password)
+        if not is_valid:
+            return False, error_message
         
         # Hash the password
         password_hash = self._hash_password(password)
@@ -130,8 +188,10 @@ class UserManager:
         Returns:
             Tuple of (success: bool, message: str, user_data: dict or None)
         """
-        if not username or not password:
-            return False, "Username and password are required", None
+        # Use UserValidator (SRP)
+        is_valid, error_message = self.validator.validate_login(username, password)
+        if not is_valid:
+            return False, error_message, None
         
         try:
             conn = sqlite3.connect(self.db_path)
