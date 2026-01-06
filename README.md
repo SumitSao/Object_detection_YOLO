@@ -7,9 +7,48 @@ A complete object detection system using YOLO11n for processing images and video
 
 - 🖼️ **Image Detection**: Process single images or batch process entire directories
 - 🎥 **Video Detection**: Process video files with frame-by-frame object detection
+- 🏞️ **Park Activity Monitoring**: Detect authorized/unauthorized activities with color-coded boxes
 - 📊 **Detailed Output**: Bounding boxes with labels and confidence scores
 - 💾 **Save Results**: Automatically save annotated images and videos
 - 🎯 **Configurable**: Adjust confidence thresholds and other parameters
+- 🚨 **Violation Reports**: Generate CSV/JSON reports for unauthorized activities
+
+## Architecture & SOLID Principles
+
+This project follows **SOLID design principles** to ensure maintainable, scalable, and testable code:
+
+### 1. **Single Responsibility Principle (SRP)**
+Each class has one well-defined responsibility:
+
+- **`PasswordHasher`** (`auth/user_manager.py`): Handles only password hashing and verification
+- **`UserValidator`** (`auth/user_manager.py`): Validates user input (registration, login)
+- **`ImageDetector`** (`app.py`): Performs object detection on images only
+- **`VideoDetector`** (`app.py`): Performs object detection on videos only
+- **`ResultHandler`** (`app.py`): Formats and processes detection results
+- **`ActivityClassifier`** (`activity_monitor/rules_engine.py`): Classifies activities as authorized/unauthorized
+- **`ActivityVisualizer`** (`activity_monitor/visualizer.py`): Creates color-coded visualizations
+
+### 2. **Liskov Substitution Principle (LSP)**
+Subtypes can be substituted for their base types without breaking functionality:
+
+- **`IDetector`** interface (`app.py`): Abstract base class for all detectors
+- **`ImageDetector`** and **`VideoDetector`**: Both implement `IDetector` and can be used interchangeably
+- Any detector implementing `IDetector` can replace another without affecting the application
+
+### 3. **Dependency Inversion Principle (DIP)**
+High-level modules depend on abstractions, not concrete implementations:
+
+- **`IModelLoader`** interface (`app.py`): Abstract interface for model loading
+- **`YOLOModelLoader`** (`app.py`): Concrete implementation that can be replaced
+- The application depends on `IModelLoader`, not directly on YOLO-specific code
+- Easy to swap YOLO with other detection frameworks without changing high-level code
+
+### Benefits of SOLID Implementation
+
+✅ **Maintainability**: Changes to one component don't affect others  
+✅ **Testability**: Each class can be tested independently  
+✅ **Extensibility**: Easy to add new detectors or model loaders  
+✅ **Flexibility**: Swap implementations without breaking existing code  
 
 ## Installation
 
@@ -222,6 +261,74 @@ python detect_image.py --source input/ --conf 0.3
 ```bash
 # Process a video with real-time preview
 python detect_video.py --source input/my_video.mp4 --show
+```
+
+### Example 4: Park Activity Monitoring
+```bash
+# Monitor activities in a park image (authorized/unauthorized detection)
+python detect_image.py --source input/park.jpg --monitor-activities
+
+# Monitor activities in a park video
+python detect_video.py --source input/park_video.mp4 --monitor-activities
+```
+
+## Park Activity Monitoring
+
+The system includes intelligent park monitoring that classifies activities as **authorized** (green boxes) or **unauthorized** (red boxes).
+
+### Authorized Activities ✅ (GREEN Boxes)
+- **Walking / Jogging**: Pedestrian movement
+- **Cycling**: Riding bicycles on designated paths
+- **Pet Walking**: Walking with pets on leash (person + dog)
+- **Playing**: Sports and recreational activities
+- **Sitting**: Resting on benches
+
+### Unauthorized Activities ❌ (RED Boxes)
+- **Vehicles**: Cars, trucks, buses in park areas
+- **Motorcycles**: Illegal riding
+- **Skateboarding**: Not permitted in park
+
+### Usage
+
+**Command Line (Images)**:
+```bash
+python detect_image.py --source input/park.jpg --monitor-activities
+```
+
+**Command Line (Videos)**:
+```bash
+python detect_video.py --source input/park_video.mp4 --monitor-activities
+```
+
+**Streamlit App**:
+```bash
+streamlit run app.py
+# Navigate to "🏞️ Park Monitoring" page
+```
+
+### Output
+
+The park monitoring system generates:
+- **Annotated images/videos** with color-coded bounding boxes
+- **Violation reports** (CSV and JSON format)
+- **Activity logs** with timestamps and statistics
+- **Summary statistics** (authorized vs unauthorized counts)
+
+**Example Output**:
+```
+Park Activity Monitoring Results:
+✅ Authorized Activities: 5
+   - Walking: 3 persons
+   - Pet Walking: 1 person with dog
+   - Sitting: 1 person on bench
+
+❌ Unauthorized Activities: 2
+   - Vehicle in Park: 1 car (HIGH alert)
+   - Motorcycle: 1 motorcycle (HIGH alert)
+
+Violation reports saved:
+  CSV: output/violations_20260106_175000.csv
+  JSON: output/violations_20260106_175000.json
 ```
 
 ## Tips

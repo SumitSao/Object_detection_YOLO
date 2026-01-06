@@ -19,6 +19,18 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+# Activity monitoring imports
+try:
+    from activity_monitor import (
+        ActivityClassifier,
+        ActivityVisualizer,
+        AlertManager,
+        ActivityLogger
+    )
+    ACTIVITY_MONITOR_AVAILABLE = True
+except ImportError:
+    ACTIVITY_MONITOR_AVAILABLE = False
+
 
 # ============================================================================
 # DEPENDENCY INVERSION PRINCIPLE (DIP) - Model Loader Abstraction
@@ -347,6 +359,115 @@ def show_video_detection_page(model):
                     )
 
 
+def show_park_monitoring_page(model):
+    """
+    Display park activity monitoring interface
+    """
+    st.header("🏞️ Park Activity Monitoring")
+    st.markdown("Monitor authorized and unauthorized activities in park surveillance.")
+    
+    if not ACTIVITY_MONITOR_AVAILABLE:
+        st.error("Activity monitoring module is not available. Please check installation.")
+        return
+    
+    # Info about activity monitoring
+    with st.expander("ℹ️ About Activity Monitoring"):
+        st.markdown("""
+        This feature classifies detected activities as:
+        
+        **✅ Authorized Activities (GREEN boxes)**:
+        - Walking / Jogging
+        - Cycling on designated paths
+        - Pet walking (person + dog)
+        - Playing / Sports
+        - Sitting on benches
+        
+        **❌ Unauthorized Activities (RED boxes)**:
+        - Vehicles in park (car, truck, bus)
+        - Motorcycles
+        - Skateboarding
+        
+        Violations are logged and can be exported as reports.
+        """)
+    
+    # Tab selection
+    tab1, tab2 = st.tabs(["🖼️ Image Monitoring", "🎥 Video Monitoring"])
+    
+    with tab1:
+        st.subheader("Image Activity Monitoring")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            uploaded_file = st.file_uploader("Upload park image", type=['jpg', 'jpeg', 'png'], key="park_img")
+            conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05, key="park_img_conf")
+            
+            if uploaded_file is not None:
+                image = Image.open(uploaded_file)
+                st.image(image, caption="Uploaded Image", use_container_width=True)
+                
+                if st.button("🔍 Monitor Activities", use_container_width=True):
+                    with st.spinner("Analyzing activities..."):
+                        # Convert to numpy array
+                        img_array = np.array(image)
+                        
+                        # Run YOLO detection
+                        results = model(img_array, conf=conf_threshold)
+                        
+                        # Classify activities
+                        classifier = ActivityClassifier()
+                        classification_results = classifier.classify_detections(results[0])
+                        
+                        # Create visualization
+                        visualizer = ActivityVisualizer()
+                        annotated_img = visualizer.create_annotated_image(
+                            img_array, classification_results, show_summary=True
+                        )
+                        
+                        # Store in session state
+                        st.session_state.park_result = annotated_img
+                        st.session_state.park_classification = classification_results
+                        st.session_state.park_classifier = classifier
+        
+        with col2:
+            if 'park_result' in st.session_state:
+                st.subheader("Monitoring Results")
+                st.image(st.session_state.park_result, caption="Activity Monitoring", use_container_width=True)
+                
+                # Show statistics
+                results = st.session_state.park_classification
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.metric("✅ Authorized", results['authorized_count'], delta=None, delta_color="normal")
+                with col_b:
+                    st.metric("❌ Unauthorized", results['unauthorized_count'], delta=None, delta_color="inverse")
+                
+                # Show violations
+                if results['unauthorized_count'] > 0:
+                    st.warning(f"⚠️ {results['unauthorized_count']} violation(s) detected!")
+                    
+                    with st.expander("View Violation Details"):
+                        for v in results['violations']:
+                            st.write(f"- **{v['rule'].name}**: {v['class_name']} ({v['rule'].alert_level.value} alert)")
+    
+    with tab2:
+        st.subheader("Video Activity Monitoring")
+        st.info("🚧 Video monitoring is available via command line. Use: `python detect_video.py --source video.mp4 --monitor-activities`")
+        
+        st.markdown("""
+        **Command Line Usage:**
+        ```bash
+        # Monitor activities in a video
+        python detect_video.py --source input/park_video.mp4 --monitor-activities
+        
+        # This will generate:
+        # - Annotated video with color-coded boxes
+        # - Violation report (CSV and JSON)
+        # - Activity log
+        ```
+        """)
+
+
 
 
 
@@ -378,7 +499,7 @@ def main():
         st.title("Navigation")
         page = st.radio(
             "Choose a feature:",
-            ["📷 Image Detection", "🎥 Video Detection"],
+            ["📷 Image Detection", "🎥 Video Detection", "🏞️ Park Monitoring"],
             label_visibility="collapsed"
         )
         
@@ -390,6 +511,7 @@ def main():
         **Features:**
         - Image object detection
         - Video object detection
+        - Park activity monitoring
         """)
     
     # Show selected page
@@ -397,6 +519,8 @@ def main():
         show_image_detection_page(model)
     elif page == "🎥 Video Detection":
         show_video_detection_page(model)
+    elif page == "🏞️ Park Monitoring":
+        show_park_monitoring_page(model)
 
 
 if __name__ == "__main__":

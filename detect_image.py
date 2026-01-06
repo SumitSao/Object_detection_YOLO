@@ -16,6 +16,19 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 import numpy as np
 
+# Activity monitoring imports
+try:
+    from activity_monitor import (
+        ActivityClassifier,
+        ActivityVisualizer,
+        AlertManager,
+        ActivityLogger
+    )
+    ACTIVITY_MONITOR_AVAILABLE = True
+except ImportError:
+    ACTIVITY_MONITOR_AVAILABLE = False
+    print("Warning: Activity monitoring module not available")
+
 
 # ============================================================================
 # DEPENDENCY INVERSION PRINCIPLE (DIP) - Model Loader
@@ -105,26 +118,82 @@ class ResultHandler:
         cv2.destroyAllWindows()
 
 
-def detect_objects_in_image(model, image_path, output_dir, conf_threshold=0.25, show=False):
+def detect_objects_in_image(model, image_path, output_dir, conf_threshold=0.25, show=False, 
+                           monitor_activities=False):
     """
     Detect objects in a single image using SOLID principles
+    
+    Args:
+        monitor_activities: Enable park activity monitoring (green/red boxes)
     """
     # Use ImageDetector (SRP)
     detector = ImageDetector(model, conf_threshold)
     detection_result = detector.detect(image_path)
     
-    # Use ResultHandler (SRP)
-    output_path = ResultHandler.save_result(
-        detection_result['annotated_image'],
-        detection_result['image_name'],
-        output_dir
-    )
+    # Activity Monitoring Mode
+    if monitor_activities and ACTIVITY_MONITOR_AVAILABLE:
+        print("\n🏞️  Park Activity Monitoring Mode Enabled")
+        
+        # Classify activities
+        classifier = ActivityClassifier()
+        classification_results = classifier.classify_detections(detection_result['results'])
+        
+        # Create custom visualization with color-coded boxes
+        visualizer = ActivityVisualizer()
+        image = cv2.imread(image_path)
+        annotated_img = visualizer.create_annotated_image(image, classification_results, show_summary=True)
+        
+        # Alert management
+        alert_manager = AlertManager(output_dir)
+        for classification in classification_results['classifications']:
+            alert_manager.add_alert(classification)
+        
+        # Activity logging
+        activity_logger = ActivityLogger(output_dir)
+        activity_logger.log_all_activities(classification_results)
+        
+        # Save results
+        output_path = ResultHandler.save_result(
+            annotated_img,
+            detection_result['image_name'],
+            output_dir
+        )
+        
+        # Print activity summary
+        print(classifier.get_summary())
+        
+        # Print alert summary
+        if alert_manager.get_alert_count() > 0:
+            print(alert_manager.get_summary())
+            
+            # Save violation reports
+            csv_path = alert_manager.save_to_csv()
+            json_path = alert_manager.save_to_json()
+            print(f"\nViolation reports saved:")
+            print(f"  CSV: {csv_path}")
+            print(f"  JSON: {json_path}")
+        
+        # Save activity log
+        log_path = activity_logger.save_log()
+        print(f"\nActivity log saved: {log_path}")
+        
+    else:
+        # Standard detection mode
+        output_path = ResultHandler.save_result(
+            detection_result['annotated_image'],
+            detection_result['image_name'],
+            output_dir
+        )
+        
+        ResultHandler.print_summary(detection_result['results'], detection_result['image_name'])
     
-    ResultHandler.print_summary(detection_result['results'], detection_result['image_name'])
     print(f"\nSaved to: {output_path}")
     
     if show:
-        ResultHandler.display_result(detection_result['annotated_image'], detection_result['image_name'])
+        cv2.imshow(f"Detection - {detection_result['image_name']}", 
+                   cv2.imread(output_path) if monitor_activities else detection_result['annotated_image'])
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
     
     return output_path
 
@@ -140,6 +209,8 @@ def main():
                        help="Confidence threshold (0-1)")
     parser.add_argument("--show", action="store_true",
                        help="Display results")
+    parser.add_argument("--monitor-activities", action="store_true",
+                       help="Enable park activity monitoring (authorized/unauthorized detection)")
     
     args = parser.parse_args()
     
@@ -157,7 +228,8 @@ def main():
     
     if source_path.is_file():
         # Process single image
-        detect_objects_in_image(model, str(source_path), args.output, args.conf, args.show)
+        detect_objects_in_image(model, str(source_path), args.output, args.conf, args.show, 
+                               args.monitor_activities)
     elif source_path.is_dir():
         # Process all images in directory
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
@@ -171,7 +243,8 @@ def main():
         print(f"Found {len(image_files)} images to process\n")
         
         for img_file in image_files:
-            detect_objects_in_image(model, str(img_file), args.output, args.conf, args.show)
+            detect_objects_in_image(model, str(img_file), args.output, args.conf, args.show,
+                                   args.monitor_activities)
     else:
         print(f"Error: {args.source} is not a valid file or directory")
         return
