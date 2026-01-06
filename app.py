@@ -153,9 +153,10 @@ class VideoDetector(IDetector):
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        # Create temporary output file
+        # Create temporary output file with H.264 codec for better browser compatibility
         output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # Use H.264 codec (avc1) which is widely supported by browsers
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         # Process video
@@ -244,6 +245,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for equal video heights
+st.markdown("""
+<style>
+/* Make video containers equal height */
+[data-testid="stVideo"] {
+    height: 500px;
+}
+[data-testid="stVideo"] video {
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Make image containers equal height */
+[data-testid="stImage"] {
+    height: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+[data-testid="stImage"] img {
+    max-height: 100%;
+    object-fit: contain;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ============================================================================
 # Application Functions (Using SOLID Principles)
@@ -278,39 +305,105 @@ def show_image_detection_page(model):
     st.header("📷 Image Object Detection")
     st.markdown("Upload an image to detect objects using YOLO.")
     
-    col1, col2 = st.columns(2)
+    # Initialize file uploader key in session state
+    if 'img_uploader_key' not in st.session_state:
+        st.session_state.img_uploader_key = 0
     
-    with col1:
-        uploaded_file = st.file_uploader("Choose an image...", type=['jpg', 'jpeg', 'png'])
-        conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
+    # File uploader and clear button
+    col_upload, col_clear = st.columns([4, 1])
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "Choose an image...", 
+            type=['jpg', 'jpeg', 'png'],
+            key=f"image_uploader_{st.session_state.img_uploader_key}"
+        )
+    with col_clear:
+        st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with uploader
+        if st.button("🗑️ Clear", use_container_width=True, key="clear_image"):
+            # Clear session state
+            if 'detection_result' in st.session_state:
+                del st.session_state.detection_result
+            if 'detection_info' in st.session_state:
+                del st.session_state.detection_info
+            if 'original_image' in st.session_state:
+                del st.session_state.original_image
+            # Change uploader key to clear the file
+            st.session_state.img_uploader_key += 1
+            st.rerun()
+    
+    conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
+    
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
         
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_container_width=True)
+        if st.button("🔍 Detect Objects", use_container_width=True):
+            with st.spinner("Detecting objects..."):
+                # Use ImageDetector class (SRP + LSP)
+                detector = ImageDetector(model, conf_threshold)
+                result = detector.detect(image)
+                
+                # Store results in session state
+                st.session_state.detection_result = result['annotated_image']
+                st.session_state.detection_info = result['results']
+                st.session_state.original_image = image
+        
+        # Display images side by side if detection is complete
+        if 'detection_result' in st.session_state and hasattr(st.session_state, 'original_image'):
+            st.markdown("---")
             
-            if st.button("🔍 Detect Objects", use_container_width=True):
-                with st.spinner("Detecting objects..."):
-                    # Use ImageDetector class (SRP + LSP)
-                    detector = ImageDetector(model, conf_threshold)
-                    result = detector.detect(image)
-                    
-                    # Store results in session state
-                    st.session_state.detection_result = result['annotated_image']
-                    st.session_state.detection_info = result['results']
-    
-    with col2:
-        if 'detection_result' in st.session_state:
-            st.subheader("Detection Results")
-            st.image(st.session_state.detection_result, caption="Detected Objects", use_container_width=True)
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📤 Uploaded Image")
+                st.image(image, use_container_width=True)
+            
+            with col2:
+                st.subheader("✅ Detected Image")
+                st.image(st.session_state.detection_result, use_container_width=True)
+            
+            # Show detection summary below images
+            st.markdown("---")
             
             # Use ResultHandler to format results (SRP)
             if st.session_state.detection_info:
                 summary = ResultHandler.get_detection_summary(st.session_state.detection_info)
-                st.metric("Objects Detected", summary['num_detections'])
+                
+                # Show metrics in columns
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                with metric_col1:
+                    st.metric("🎯 Objects Detected", summary['num_detections'])
+                with metric_col2:
+                    st.metric("📊 Unique Classes", len(summary['unique_classes']))
+                with metric_col3:
+                    st.metric("✅ Status", "Complete")
                 
                 # Show detected classes
                 if summary['num_detections'] > 0:
-                    st.write("**Detected Objects:**", ", ".join(summary['unique_classes']))
+                    st.markdown("**🔍 Detected Objects:**")
+                    st.info(", ".join(summary['unique_classes']))
+                
+                # Download button for detected image
+                st.markdown("---")
+                # Convert numpy array to PIL Image for download
+                from PIL import Image as PILImage
+                import io
+                detected_pil = PILImage.fromarray(st.session_state.detection_result)
+                buf = io.BytesIO()
+                detected_pil.save(buf, format="PNG")
+                byte_im = buf.getvalue()
+                
+                st.download_button(
+                    label="📥 Download Detected Image",
+                    data=byte_im,
+                    file_name="detected_image.png",
+                    mime="image/png",
+                    use_container_width=True
+                )
+        else:
+            # Show only uploaded image before detection
+            st.markdown("---")
+            st.subheader("📤 Uploaded Image")
+            st.image(image, use_container_width=True)
 
 
 def show_video_detection_page(model):
@@ -321,7 +414,30 @@ def show_video_detection_page(model):
     st.header("🎥 Video Object Detection")
     st.markdown("Upload a video to detect objects frame by frame using YOLO.")
     
-    uploaded_file = st.file_uploader("Choose a video...", type=['mp4', 'avi', 'mov'])
+    # Initialize file uploader key in session state
+    if 'vid_uploader_key' not in st.session_state:
+        st.session_state.vid_uploader_key = 0
+    
+    # File uploader and clear button
+    col_upload, col_clear = st.columns([4, 1])
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "Choose a video...", 
+            type=['mp4', 'avi', 'mov'],
+            key=f"video_uploader_{st.session_state.vid_uploader_key}"
+        )
+    with col_clear:
+        st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with uploader
+        if st.button("🗑️ Clear", use_container_width=True, key="clear_video"):
+            # Clear session state
+            if 'video_output_path' in st.session_state:
+                del st.session_state.video_output_path
+            if 'video_input_path' in st.session_state:
+                del st.session_state.video_input_path
+            # Change uploader key to clear the file
+            st.session_state.vid_uploader_key += 1
+            st.rerun()
+    
     conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05)
     
     if uploaded_file is not None:
@@ -329,8 +445,6 @@ def show_video_detection_page(model):
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_file.read())
         video_path = tfile.name
-        
-        st.video(video_path)
         
         if st.button("🔍 Detect Objects in Video", use_container_width=True):
             with st.spinner("Processing video... This may take a while."):
@@ -344,19 +458,41 @@ def show_video_detection_page(model):
                 result = detector.detect(video_path)
                 
                 progress_bar.empty()
-                output_path = result['output_path']
                 
+                # Store result in session state
+                st.session_state.video_output_path = result['output_path']
+                st.session_state.video_input_path = video_path
                 st.success("Detection complete!")
-                st.video(output_path)
-                
-                # Provide download button
-                with open(output_path, 'rb') as f:
-                    st.download_button(
-                        label="📥 Download Processed Video",
-                        data=f,
-                        file_name="detected_video.mp4",
-                        mime="video/mp4"
-                    )
+        
+        # Display videos side by side if detection is complete
+        if 'video_output_path' in st.session_state and hasattr(st.session_state, 'video_input_path'):
+            st.markdown("---")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📤 Uploaded Video")
+                st.video(st.session_state.video_input_path)
+            
+            with col2:
+                st.subheader("✅ Detected Video")
+                st.video(st.session_state.video_output_path)
+            
+            # Download button below both videos
+            st.markdown("---")
+            with open(st.session_state.video_output_path, 'rb') as f:
+                st.download_button(
+                    label="📥 Download Processed Video",
+                    data=f,
+                    file_name="detected_video.mp4",
+                    mime="video/mp4",
+                    use_container_width=True
+                )
+        else:
+            # Show only uploaded video before detection
+            st.markdown("---")
+            st.subheader("📤 Uploaded Video")
+            st.video(video_path)
 
 
 def show_park_monitoring_page(model):
@@ -396,51 +532,87 @@ def show_park_monitoring_page(model):
     with tab1:
         st.subheader("Image Activity Monitoring")
         
-        col1, col2 = st.columns(2)
+        # Initialize file uploader key in session state
+        if 'park_uploader_key' not in st.session_state:
+            st.session_state.park_uploader_key = 0
         
-        with col1:
-            uploaded_file = st.file_uploader("Upload park image", type=['jpg', 'jpeg', 'png'], key="park_img")
-            conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05, key="park_img_conf")
+        # File uploader and clear button
+        col_upload, col_clear = st.columns([4, 1])
+        with col_upload:
+            uploaded_file = st.file_uploader(
+                "Upload park image", 
+                type=['jpg', 'jpeg', 'png'], 
+                key=f"park_img_{st.session_state.park_uploader_key}"
+            )
+        with col_clear:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with uploader
+            if st.button("🗑️ Clear", use_container_width=True, key="clear_park"):
+                # Clear session state
+                if 'park_result' in st.session_state:
+                    del st.session_state.park_result
+                if 'park_classification' in st.session_state:
+                    del st.session_state.park_classification
+                if 'park_classifier' in st.session_state:
+                    del st.session_state.park_classifier
+                if 'park_original_image' in st.session_state:
+                    del st.session_state.park_original_image
+                # Change uploader key to clear the file
+                st.session_state.park_uploader_key += 1
+                st.rerun()
+        
+        conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05, key="park_img_conf")
+        
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file)
             
-            if uploaded_file is not None:
-                image = Image.open(uploaded_file)
-                st.image(image, caption="Uploaded Image", use_container_width=True)
+            if st.button("🔍 Monitor Activities", use_container_width=True):
+                with st.spinner("Analyzing activities..."):
+                    # Convert to numpy array
+                    img_array = np.array(image)
+                    
+                    # Run YOLO detection
+                    results = model(img_array, conf=conf_threshold)
+                    
+                    # Classify activities
+                    classifier = ActivityClassifier()
+                    classification_results = classifier.classify_detections(results[0])
+                    
+                    # Create visualization
+                    visualizer = ActivityVisualizer()
+                    annotated_img = visualizer.create_annotated_image(
+                        img_array, classification_results, show_summary=True
+                    )
+                    
+                    # Store in session state
+                    st.session_state.park_result = annotated_img
+                    st.session_state.park_classification = classification_results
+                    st.session_state.park_classifier = classifier
+                    st.session_state.park_original_image = image
+            
+            # Display images side by side if monitoring is complete
+            if 'park_result' in st.session_state and hasattr(st.session_state, 'park_original_image'):
+                st.markdown("---")
                 
-                if st.button("🔍 Monitor Activities", use_container_width=True):
-                    with st.spinner("Analyzing activities..."):
-                        # Convert to numpy array
-                        img_array = np.array(image)
-                        
-                        # Run YOLO detection
-                        results = model(img_array, conf=conf_threshold)
-                        
-                        # Classify activities
-                        classifier = ActivityClassifier()
-                        classification_results = classifier.classify_detections(results[0])
-                        
-                        # Create visualization
-                        visualizer = ActivityVisualizer()
-                        annotated_img = visualizer.create_annotated_image(
-                            img_array, classification_results, show_summary=True
-                        )
-                        
-                        # Store in session state
-                        st.session_state.park_result = annotated_img
-                        st.session_state.park_classification = classification_results
-                        st.session_state.park_classifier = classifier
-        
-        with col2:
-            if 'park_result' in st.session_state:
-                st.subheader("Monitoring Results")
-                st.image(st.session_state.park_result, caption="Activity Monitoring", use_container_width=True)
+                col1, col2 = st.columns(2)
                 
-                # Show statistics
+                with col1:
+                    st.subheader("📤 Uploaded Image")
+                    st.image(image, use_container_width=True)
+                
+                with col2:
+                    st.subheader("🏞️ Monitoring Results")
+                    st.image(st.session_state.park_result, use_container_width=True)
+                
+                # Show statistics below images
+                st.markdown("---")
                 results = st.session_state.park_classification
-                col_a, col_b = st.columns(2)
+                col_a, col_b, col_c = st.columns(3)
                 with col_a:
                     st.metric("✅ Authorized", results['authorized_count'], delta=None, delta_color="normal")
                 with col_b:
                     st.metric("❌ Unauthorized", results['unauthorized_count'], delta=None, delta_color="inverse")
+                with col_c:
+                    st.metric("📊 Total Detected", results['authorized_count'] + results['unauthorized_count'])
                 
                 # Show violations
                 if results['unauthorized_count'] > 0:
@@ -449,6 +621,28 @@ def show_park_monitoring_page(model):
                     with st.expander("View Violation Details"):
                         for v in results['violations']:
                             st.write(f"- **{v['rule'].name}**: {v['class_name']} ({v['rule'].alert_level.value} alert)")
+                
+                # Download button for monitoring result
+                st.markdown("---")
+                from PIL import Image as PILImage
+                import io
+                monitored_pil = PILImage.fromarray(st.session_state.park_result)
+                buf = io.BytesIO()
+                monitored_pil.save(buf, format="PNG")
+                byte_im = buf.getvalue()
+                
+                st.download_button(
+                    label="📥 Download Monitoring Result",
+                    data=byte_im,
+                    file_name="park_monitoring_result.png",
+                    mime="image/png",
+                    use_container_width=True
+                )
+            else:
+                # Show only uploaded image before monitoring
+                st.markdown("---")
+                st.subheader("📤 Uploaded Image")
+                st.image(image, use_container_width=True)
     
     with tab2:
         st.subheader("Video Activity Monitoring")
