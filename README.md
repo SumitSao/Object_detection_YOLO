@@ -10,6 +10,7 @@ A complete object detection system using YOLO11n for processing images and video
 - 🏞️ **Park Activity Monitoring**: Detect authorized/unauthorized activities with color-coded boxes
 - 📊 **Detailed Output**: Bounding boxes with labels and confidence scores
 - 💾 **Save Results**: Automatically save annotated images and videos
+- 📄 **PDF Reports**: Generate comprehensive PDF reports with detection details and images
 - 🎯 **Configurable**: Adjust confidence thresholds and other parameters
 - 🚨 **Violation Reports**: Generate CSV/JSON reports for unauthorized activities
 
@@ -64,19 +65,31 @@ High-level modules depend on abstractions, not concrete implementations:
 
 ```
 Object_detection_YOLO/
-├── detect_image.py       # Image detection script
-├── detect_video.py       # Video detection script
-├── train_model.py        # Advanced model training script
-├── train_quick.py        # Quick-start training script
-├── requirements.txt      # Python dependencies
-├── README.md            # This file
-├── data/                # Training dataset
-│   ├── data.yaml        # Dataset configuration
-│   ├── train/           # Training images & labels
-│   ├── valid/           # Validation images & labels
-│   └── test/            # Test images & labels
-├── input/               # Place your images/videos here
-└── output/              # Detected results will be saved here
+├── app.py               # Streamlit web application
+├── detect_image.py      # Image detection script
+├── detect_video.py      # Video detection script
+├── inference.py         # Unified inference script
+├── train_model.py       # Advanced model training script
+├── train_quick.py       # Quick-start training script
+├── requirements.txt     # Python dependencies
+├── README.md           # This file
+├── auth/               # Authentication module
+│   ├── user_manager.py # User management
+│   └── auth_ui.py      # Authentication UI
+├── activity_monitor/   # Park monitoring module
+│   ├── rules_engine.py # Activity classification
+│   ├── visualizer.py   # Color-coded visualization
+│   ├── alert_system.py # Alert management
+│   └── activity_logger.py # Activity logging
+├── utils/              # Utility modules
+│   └── pdf_generator.py # PDF report generation
+├── data/               # Training dataset
+│   ├── data.yaml       # Dataset configuration
+│   ├── train/          # Training images & labels
+│   ├── valid/          # Validation images & labels
+│   └── test/           # Test images & labels
+├── input/              # Place your images/videos here
+└── output/             # Detected results will be saved here
 ```
 
 ## Usage
@@ -304,12 +317,14 @@ python detect_video.py --source input/park_video.mp4 --monitor-activities
 ```bash
 streamlit run app.py
 # Navigate to "🏞️ Park Monitoring" page
+# Click "📄 Download PDF Report" to get comprehensive PDF with all details
 ```
 
 ### Output
 
 The park monitoring system generates:
 - **Annotated images/videos** with color-coded bounding boxes
+- **PDF Reports** with comprehensive detection details and images
 - **Violation reports** (CSV and JSON format)
 - **Activity logs** with timestamps and statistics
 - **Summary statistics** (authorized vs unauthorized counts)
@@ -330,6 +345,54 @@ Violation reports saved:
   CSV: output/violations_20260106_175000.csv
   JSON: output/violations_20260106_175000.json
 ```
+
+## PDF Report Generation
+
+The Streamlit web application includes professional PDF report generation for both standard object detection and park activity monitoring.
+
+### Features
+
+**Image Detection Reports** include:
+- Original and detected images side-by-side
+- Detection summary table (total objects, unique classes)
+- List of all detected objects with confidence scores
+- Metadata (username, timestamp, model version)
+
+**Park Monitoring Reports** include:
+- Original and monitored images side-by-side
+- Activity summary (authorized vs unauthorized counts)
+- Color-coded tables:
+  - **Green table**: Authorized activities with confidence scores
+  - **Red table**: Violations with alert levels and rule details
+- Professional formatting with headers and footers
+
+### Usage
+
+1. **Run the Streamlit app**:
+   ```bash
+   streamlit run app.py
+   ```
+
+2. **For Image Detection**:
+   - Navigate to "📷 Image Detection" page
+   - Upload an image and click "🔍 Detect Objects"
+   - Click "📄 Download PDF Report" to get the comprehensive PDF
+
+3. **For Park Monitoring**:
+   - Navigate to "🏞️ Park Monitoring" page
+   - Upload a park image and click "🔍 Monitor Activities"
+   - Click "📄 Download PDF Report" to get detailed PDF with authorized/unauthorized classifications
+
+### PDF Contents
+
+All PDF reports include:
+- **Professional layout** with custom styling
+- **Color-coded tables** for easy reading
+- **Embedded images** (original and processed)
+- **Detection statistics** and summaries
+- **Timestamp and user information**
+- **Page numbers** and footers
+
 
 ## Tips
 
