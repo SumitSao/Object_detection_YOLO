@@ -18,6 +18,7 @@ from ultralytics import YOLO
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Any, Dict
+from utils.pdf_generator import PDFReportGenerator
 
 # Activity monitoring imports
 try:
@@ -392,13 +393,45 @@ def show_image_detection_page(model):
                 detected_pil.save(buf, format="PNG")
                 byte_im = buf.getvalue()
                 
-                st.download_button(
-                    label="📥 Download Detected Image",
-                    data=byte_im,
-                    file_name="detected_image.png",
-                    mime="image/png",
-                    use_container_width=True
-                )
+                col_download1, col_download2 = st.columns(2)
+                
+                with col_download1:
+                    st.download_button(
+                        label="📥 Download Detected Image",
+                        data=byte_im,
+                        file_name="detected_image.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                
+                with col_download2:
+                    # Generate PDF report
+                    pdf_generator = PDFReportGenerator()
+                    pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf').name
+                    
+                    # Get username from session state
+                    username = st.session_state.get('username', 'User')
+                    
+                    # Generate PDF
+                    pdf_generator.generate_image_detection_report(
+                        original_image=image,
+                        detected_image=st.session_state.detection_result,
+                        detection_results=summary,
+                        output_path=pdf_path,
+                        username=username
+                    )
+                    
+                    # Read PDF for download
+                    with open(pdf_path, 'rb') as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                    
+                    st.download_button(
+                        label="📄 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name="detection_report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
         else:
             # Show only uploaded image before detection
             st.markdown("---")
@@ -631,13 +664,45 @@ def show_park_monitoring_page(model):
                 monitored_pil.save(buf, format="PNG")
                 byte_im = buf.getvalue()
                 
-                st.download_button(
-                    label="📥 Download Monitoring Result",
-                    data=byte_im,
-                    file_name="park_monitoring_result.png",
-                    mime="image/png",
-                    use_container_width=True
-                )
+                col_download1, col_download2 = st.columns(2)
+                
+                with col_download1:
+                    st.download_button(
+                        label="📥 Download Monitoring Result",
+                        data=byte_im,
+                        file_name="park_monitoring_result.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                
+                with col_download2:
+                    # Generate PDF report
+                    pdf_generator = PDFReportGenerator()
+                    pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf').name
+                    
+                    # Get username from session state
+                    username = st.session_state.get('username', 'User')
+                    
+                    # Generate PDF
+                    pdf_generator.generate_park_monitoring_report(
+                        original_image=image,
+                        monitored_image=st.session_state.park_result,
+                        classification_results=st.session_state.park_classification,
+                        output_path=pdf_path,
+                        username=username
+                    )
+                    
+                    # Read PDF for download
+                    with open(pdf_path, 'rb') as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                    
+                    st.download_button(
+                        label="📄 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name="park_monitoring_report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
             else:
                 # Show only uploaded image before monitoring
                 st.markdown("---")
