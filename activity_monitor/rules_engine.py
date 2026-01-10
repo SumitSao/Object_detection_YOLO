@@ -265,6 +265,15 @@ class ActivityClassifier:
         
         return summary
     
+    def get_summary_dict(self) -> Dict[str, Any]:
+        """Get classification summary as a dictionary"""
+        return {
+            'authorized_count': self.authorized_count,
+            'unauthorized_count': self.unauthorized_count,
+            'violations': self.violations,
+            'total_detections': self.authorized_count + self.unauthorized_count
+        }
+    
     def reset(self):
         """Reset counters and violations"""
         self.authorized_count = 0

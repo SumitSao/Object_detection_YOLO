@@ -620,6 +620,13 @@ def show_park_monitoring_page(model):
                     st.session_state.park_result = annotated_img
                     st.session_state.park_classification = classification_results
                     st.session_state.park_classifier = classifier
+                    
+                    # Show immediate alert if violations detected
+                    if classification_results['unauthorized_count'] > 0:
+                        st.toast(f"🚨 SECURITY ALERT: {classification_results['unauthorized_count']} Unauthorized Activity Detected!", icon="🚨")
+                        st.error(f"🚨 ALERT: {classification_results['unauthorized_count']} UNAUTHORIZED ACTIVITY DETECTED!")
+                    else:
+                        st.toast("✅ Monitoring Complete - All Clear!", icon="✅")
                     st.session_state.park_original_image = image
             
             # Display images side by side if monitoring is complete
@@ -647,13 +654,17 @@ def show_park_monitoring_page(model):
                 with col_c:
                     st.metric("📊 Total Detected", results['authorized_count'] + results['unauthorized_count'])
                 
-                # Show violations
+                # Show violations with prominent alert
                 if results['unauthorized_count'] > 0:
-                    st.warning(f"⚠️ {results['unauthorized_count']} violation(s) detected!")
+                    st.error(f"🚨 SECURITY ALERT: {results['unauthorized_count']} UNAUTHORIZED ACTIVITY DETECTED!")
                     
-                    with st.expander("View Violation Details"):
-                        for v in results['violations']:
-                            st.write(f"- **{v['rule'].name}**: {v['class_name']} ({v['rule'].alert_level.value} alert)")
+                    # Show violation summary in a prominent box
+                    st.markdown("### 🔴 Violation Details")
+                    for v in results['violations']:
+                        alert_emoji = "🚨" if v['rule'].alert_level.value == "high" else "⚠️"
+                        st.markdown(f"{alert_emoji} **{v['rule'].name}**: `{v['class_name']}` (Confidence: {v['confidence']:.1%}) - **{v['rule'].alert_level.value.upper()} PRIORITY**")
+                else:
+                    st.success("✅ All Clear - No Violations Detected")
                 
                 # Download button for monitoring result
                 st.markdown("---")
@@ -711,20 +722,234 @@ def show_park_monitoring_page(model):
     
     with tab2:
         st.subheader("Video Activity Monitoring")
-        st.info("🚧 Video monitoring is available via command line. Use: `python detect_video.py --source video.mp4 --monitor-activities`")
         
-        st.markdown("""
-        **Command Line Usage:**
-        ```bash
-        # Monitor activities in a video
-        python detect_video.py --source input/park_video.mp4 --monitor-activities
+        # Initialize file uploader key in session state
+        if 'park_vid_uploader_key' not in st.session_state:
+            st.session_state.park_vid_uploader_key = 0
         
-        # This will generate:
-        # - Annotated video with color-coded boxes
-        # - Violation report (CSV and JSON)
-        # - Activity log
-        ```
-        """)
+        # File uploader and clear button
+        col_upload, col_clear = st.columns([4, 1])
+        with col_upload:
+            uploaded_file = st.file_uploader(
+                "Upload park video", 
+                type=['mp4', 'avi', 'mov'], 
+                key=f"park_vid_{st.session_state.park_vid_uploader_key}"
+            )
+        with col_clear:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with uploader
+            if st.button("🗑️ Clear", use_container_width=True, key="clear_park_vid"):
+                # Clear session state
+                if 'park_vid_result' in st.session_state:
+                    del st.session_state.park_vid_result
+                if 'park_vid_classification' in st.session_state:
+                    del st.session_state.park_vid_classification
+                if 'park_vid_input_path' in st.session_state:
+                    del st.session_state.park_vid_input_path
+                if 'park_vid_classifier' in st.session_state:
+                    del st.session_state.park_vid_classifier
+                if 'park_vid_alert_manager' in st.session_state:
+                    del st.session_state.park_vid_alert_manager
+                # Change uploader key to clear the file
+                st.session_state.park_vid_uploader_key += 1
+                st.rerun()
+        
+        conf_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.05, key="park_vid_conf")
+        
+        if uploaded_file is not None:
+            # Save uploaded video temporarily
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile.write(uploaded_file.read())
+            video_path = tfile.name
+            
+            if st.button("🔍 Monitor Activities in Video", use_container_width=True):
+                with st.spinner("Processing video... This may take a while."):
+                    # Get video properties
+                    cap = cv2.VideoCapture(video_path)
+                    fps = int(cap.get(cv2.CAP_PROP_FPS))
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    cap.release()
+                    
+                    # Initialize activity monitoring components
+                    classifier = ActivityClassifier()
+                    visualizer = ActivityVisualizer()
+                    alert_manager = AlertManager(tempfile.gettempdir())
+                    activity_logger = ActivityLogger(tempfile.gettempdir())
+                    
+                    # Create output video path
+                    output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+                    
+                    # Setup video writer with H.264 codec for browser compatibility
+                    fourcc = cv2.VideoWriter_fourcc(*'avc1')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                    
+                    # Process video frame by frame
+                    cap = cv2.VideoCapture(video_path)
+                    frame_count = 0
+                    
+                    # Progress bar
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    while cap.isOpened():
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        
+                        frame_count += 1
+                        
+                        # Run YOLO detection
+                        results = model(frame, conf=conf_threshold, verbose=False)
+                        
+                        # Classify activities
+                        classification_results = classifier.classify_detections(results[0])
+                        
+                        # Create custom visualization
+                        annotated_frame = visualizer.create_annotated_image(
+                            frame, classification_results, show_summary=False
+                        )
+                        
+                        # Log activities and alerts
+                        activity_logger.log_all_activities(classification_results, frame_count)
+                        for classification in classification_results['classifications']:
+                            alert_manager.add_alert(classification, frame_count)
+                        
+                        # Write frame
+                        out.write(annotated_frame)
+                        
+                        # Update progress
+                        if frame_count % 10 == 0:  # Update every 10 frames
+                            progress = frame_count / total_frames
+                            progress_bar.progress(progress)
+                            status_text.text(f"Processing: {frame_count}/{total_frames} frames ({progress*100:.1f}%)")
+                    
+                    cap.release()
+                    out.release()
+                    
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    # Get final summary from classifier
+                    final_summary = classifier.get_summary_dict()
+                    
+                    # Store in session state
+                    st.session_state.park_vid_result = output_path
+                    st.session_state.park_vid_classification = final_summary
+                    st.session_state.park_vid_input_path = video_path
+                    st.session_state.park_vid_classifier = classifier
+                    st.session_state.park_vid_alert_manager = alert_manager
+                    
+                    # Show immediate alert if violations detected
+                    if final_summary.get('unauthorized_count', 0) > 0:
+                        st.toast(f"🚨 SECURITY ALERT: {final_summary.get('unauthorized_count', 0)} Unauthorized Activities Detected in Video!", icon="🚨")
+                        st.error(f"🚨 ALERT: {final_summary.get('unauthorized_count', 0)} UNAUTHORIZED ACTIVITIES DETECTED IN VIDEO!")
+                    else:
+                        st.toast("✅ Video Monitoring Complete - All Clear!", icon="✅")
+                    
+                    st.success("Video processing complete!")
+            
+            # Display videos side by side if monitoring is complete
+            if 'park_vid_result' in st.session_state and hasattr(st.session_state, 'park_vid_input_path'):
+                st.markdown("---")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("📤 Uploaded Video")
+                    st.video(st.session_state.park_vid_input_path)
+                
+                with col2:
+                    st.subheader("🏞️ Monitored Video")
+                    st.video(st.session_state.park_vid_result)
+                
+                # Show statistics below videos
+                st.markdown("---")
+                results = st.session_state.park_vid_classification
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.metric("✅ Authorized", results.get('authorized_count', 0), delta=None, delta_color="normal")
+                with col_b:
+                    st.metric("❌ Unauthorized", results.get('unauthorized_count', 0), delta=None, delta_color="inverse")
+                with col_c:
+                    st.metric("📊 Total Detected", results.get('authorized_count', 0) + results.get('unauthorized_count', 0))
+                
+                # Show violations with prominent alert
+                if results.get('unauthorized_count', 0) > 0:
+                    st.error(f"🚨 SECURITY ALERT: {results.get('unauthorized_count', 0)} UNAUTHORIZED ACTIVITIES DETECTED IN VIDEO!")
+                    
+                    # Show violation summary
+                    st.markdown("### 🔴 Violation Summary")
+                    if hasattr(st.session_state, 'park_vid_alert_manager'):
+                        alert_mgr = st.session_state.park_vid_alert_manager
+                        if alert_mgr.get_alert_count() > 0:
+                            # Display alert summary in formatted way
+                            st.markdown(f"**Total Violation Instances:** {alert_mgr.get_alert_count()}")
+                            
+                            with st.expander("📋 View Detailed Violation Log", expanded=True):
+                                st.text(alert_mgr.get_summary())
+                    
+                    # Show violations from classification results
+                    if results.get('violations'):
+                        st.markdown("**Detected Unauthorized Activities:**")
+                        for v in results['violations']:
+                            alert_emoji = "🚨" if v['rule'].alert_level.value == "high" else "⚠️"
+                            st.markdown(f"{alert_emoji} **{v['rule'].name}**: `{v['class_name']}` - **{v['rule'].alert_level.value.upper()} PRIORITY**")
+                else:
+                    st.success("✅ All Clear - No Violations Detected in Video")
+                
+                # Download buttons
+                st.markdown("---")
+                col_download1, col_download2 = st.columns(2)
+                
+                with col_download1:
+                    with open(st.session_state.park_vid_result, 'rb') as f:
+                        st.download_button(
+                            label="📥 Download Monitored Video",
+                            data=f,
+                            file_name="park_monitoring_video.mp4",
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
+                
+                with col_download2:
+                    # Generate PDF report
+                    pdf_generator = PDFReportGenerator()
+                    pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf').name
+                    
+                    # Get username from session state
+                    username = st.session_state.get('username', 'User')
+                    
+                    # Generate PDF for video monitoring
+                    pdf_generator.generate_park_video_monitoring_report(
+                        classification_results=st.session_state.park_vid_classification,
+                        output_path=pdf_path,
+                        username=username,
+                        video_metadata={
+                            'total_frames': results.get('total_frames', 0),
+                            'fps': results.get('fps', 0),
+                            'duration': results.get('duration', 0)
+                        }
+                    )
+                    
+                    # Read PDF for download
+                    with open(pdf_path, 'rb') as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                    
+                    st.download_button(
+                        label="📄 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name="park_video_monitoring_report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+            else:
+                # Show only uploaded video before monitoring
+                st.markdown("---")
+                st.subheader("📤 Uploaded Video")
+                st.video(video_path)
+
 
 
 
