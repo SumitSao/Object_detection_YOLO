@@ -777,10 +777,10 @@ def show_park_monitoring_page(model):
                     alert_manager = AlertManager(tempfile.gettempdir())
                     activity_logger = ActivityLogger(tempfile.gettempdir())
                     
-                    # Create output video path
+                    # Create output video path with H.264 codec for better browser compatibility
                     output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
                     
-                    # Setup video writer with H.264 codec for browser compatibility
+                    # Setup video writer with H.264 codec
                     fourcc = cv2.VideoWriter_fourcc(*'avc1')
                     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                     
@@ -889,13 +889,6 @@ def show_park_monitoring_page(model):
                             
                             with st.expander("📋 View Detailed Violation Log", expanded=True):
                                 st.text(alert_mgr.get_summary())
-                    
-                    # Show violations from classification results
-                    if results.get('violations'):
-                        st.markdown("**Detected Unauthorized Activities:**")
-                        for v in results['violations']:
-                            alert_emoji = "🚨" if v['rule'].alert_level.value == "high" else "⚠️"
-                            st.markdown(f"{alert_emoji} **{v['rule'].name}**: `{v['class_name']}` - **{v['rule'].alert_level.value.upper()} PRIORITY**")
                 else:
                     st.success("✅ All Clear - No Violations Detected in Video")
                 
